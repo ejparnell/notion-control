@@ -38,4 +38,9 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# local memory — private notes; commit sample files explicitly if desired
+/local-memory/
+/data/
 next-env.d.ts
+.env.local

@@ -1,26 +1,128 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+
+  /* Core app colors */
+  --background: 240 24% 4%;
+  --foreground: 210 40% 96%;
+
+  --surface: 240 22% 7%;
+  --surface-soft: 240 20% 10%;
+  --surface-muted: 240 18% 14%;
+  --surface-raised: 240 18% 16%;
+
+  --border: 240 18% 22%;
+  --border-strong: 240 16% 32%;
+
+  --muted: 240 10% 70%;
+  --muted-soft: 240 8% 52%;
+
+  /* Brand colors */
+  --primary: 186 96% 56%;
+  --primary-foreground: 240 24% 4%;
+  --primary-soft: 186 80% 14%;
+
+  --secondary: 315 100% 65%;
+  --secondary-foreground: 240 24% 4%;
+  --secondary-soft: 315 70% 15%;
+
+  --accent: 260 90% 68%;
+  --accent-foreground: 210 40% 96%;
+  --accent-soft: 260 60% 16%;
+
+  /* Status colors */
+  --success: 153 88% 55%;
+  --success-foreground: 240 24% 4%;
+  --success-soft: 153 70% 13%;
+
+  --info: 199 96% 58%;
+  --info-foreground: 240 24% 4%;
+  --info-soft: 199 80% 14%;
+
+  --warning: 51 100% 62%;
+  --warning-foreground: 240 24% 4%;
+  --warning-soft: 51 80% 14%;
+
+  --danger: 350 100% 66%;
+  --danger-foreground: 240 24% 4%;
+  --danger-soft: 350 75% 15%;
+
+  /* Glow shadows */
+  --shadow-glow: 0 0 20px hsl(var(--primary) / 0.45);
+  --shadow-glow-strong: 0 0 28px hsl(var(--primary) / 0.7);
+  --shadow-glow-secondary: 0 0 20px hsl(var(--secondary) / 0.5);
+  --shadow-glow-danger: 0 0 20px hsl(var(--danger) / 0.5);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-surface: hsl(var(--surface));
+  --color-surface-soft: hsl(var(--surface-soft));
+  --color-surface-muted: hsl(var(--surface-muted));
+  --color-surface-raised: hsl(var(--surface-raised));
+
+  --color-border: hsl(var(--border));
+  --color-border-strong: hsl(var(--border-strong));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-soft: hsl(var(--muted-soft));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-soft: hsl(var(--primary-soft));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-secondary-soft: hsl(var(--secondary-soft));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent-soft: hsl(var(--accent-soft));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-success-soft: hsl(var(--success-soft));
+
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
+  --color-info-soft: hsl(var(--info-soft));
+
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-warning-soft: hsl(var(--warning-soft));
+
+  --color-danger: hsl(var(--danger));
+  --color-danger-foreground: hsl(var(--danger-foreground));
+  --color-danger-soft: hsl(var(--danger-soft));
+
+  --shadow-glow: var(--shadow-glow);
+  --shadow-glow-strong: var(--shadow-glow-strong);
+  --shadow-glow-secondary: var(--shadow-glow-secondary);
+  --shadow-glow-danger: var(--shadow-glow-danger);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: hsl(var(--background));
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  min-height: 100vh;
+  color: hsl(var(--foreground));
   font-family: Arial, Helvetica, sans-serif;
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.35);
+  color: hsl(var(--foreground));
 }

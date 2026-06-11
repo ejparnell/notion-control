@@ -1,36 +1,113 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Notion Control
+
+Notion Control is a private productivity dashboard for planning projects, tracking tasks, and working with AI-assisted workflows. It combines a Next.js App Router interface, MongoDB-backed project/task data, Notion API integration, DeepSeek-powered chat agents, and a local-memory RAG system for grounding chat in private notes.
+
+The app is intentionally operator-focused: projects and tasks can be viewed in table/kanban-style workflows, detail pages include assistant clarifiers, and the agent orchestrator can draft structured work for human approval instead of mutating data automatically.
+
+## Features
+
+- Project and task dashboards backed by MongoDB/Mongoose
+- Project and task detail pages with edit, delete, related-work, and clarifier chat flows
+- Multi-agent planning chat that can draft projects, child tasks, and assignment suggestions
+- General chat grounded by private local-memory Markdown files
+- Notion API helpers for querying configured project/task databases
+- Server-only Gmail querying layer for mailbox, thread, body, label, and attachment metadata
+- Local RAG ingestion, validation, and evaluation scripts
+
+## Tech Stack
+
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- MongoDB with Mongoose
+- Notion SDK
+- DeepSeek chat completions
+- Hugging Face Transformers embeddings for local-memory retrieval
+- Zod validation
+- Vitest and ESLint
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create `.env.local` with the values needed for the surfaces you plan to use:
+
+```bash
+MONGODB_URI=
+NOTION_API_KEY=
+NOTION_DATABASE_ID_PROJECTS=
+NOTION_DATABASE_ID_TASKS=
+DEEPSEEK_API_KEY=
+DEEPSEEK_MODEL=
+DEEPSEEK_PRO_MODEL=
+DEEPSEEK_CODING_MODEL=
+```
+
+Optional local-memory overrides:
+
+```bash
+LOCAL_MEMORY_DIR=local-memory
+LOCAL_MEMORY_VECTOR_STORE_DIR=data/local-memory-vector-store
+EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
+```
+
+Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local Memory RAG
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Private chat grounding lives in `local-memory/`. Add concise Markdown briefs under indexed folders such as `projects/`, `contracts/`, `personal-notes/`, or `technologies/`, then rebuild the vector index:
 
-## Learn More
+```bash
+npm run rag:check
+npm run rag:ingest
+```
 
-To learn more about Next.js, take a look at the following resources:
+The generated index is written to `data/local-memory-vector-store/index.json` and is ignored by Git.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Useful Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run dev        # Start the local Next.js app
+npm run build      # Create a production build
+npm run start      # Run the production server
+npm run lint       # Run ESLint
+npm run typecheck  # Run TypeScript checks
+npm run test       # Run Vitest tests
+npm run rag:check  # Validate local-memory content
+npm run rag:ingest # Build the local-memory vector index
+npm run rag:eval   # Evaluate local-memory retrieval
+```
 
-## Deploy on Vercel
+## Project Structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```text
+src/app/                 App Router pages, route handlers, and server actions
+src/app/projects/        Project dashboard, detail page, forms, and actions
+src/app/tasks/           Task dashboard, detail page, forms, and actions
+src/app/agents/          Multi-agent planning chat and action cards
+src/app/chat/            General local-memory-aware chat surface
+src/dal/                 Server-side data access for Mongo-backed entities
+src/lib/agents/          Chat, clarifier, orchestrator, and RAG logic
+src/lib/db/              Mongoose connection and models
+src/lib/email/           Server-only Gmail REST normalization helpers
+src/lib/notion/          Notion client, database, and page helpers
+local-memory/            Private Markdown knowledge base for RAG
+scripts/                 Local-memory ingestion, validation, and eval scripts
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Notes
+
+- This project is private-first and expects real API credentials in local environment variables.
+- AI-generated work suggestions are reviewed through UI action cards before they are applied.
+- The Gmail layer currently provides reusable server-side querying utilities; UI coverage can be built on top of `src/lib/email`.
