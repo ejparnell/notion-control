@@ -5,11 +5,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatDate } from '@/lib/helper/client';
 import type {
   ProjectClarifierContext,
+  ProjectClarifierNoteInfo,
   ProjectClarifierProjectUpdatePatch,
   ProjectClarifierTaskContext,
 } from '@/lib/types/project-clarifier';
 import type { ProjectInterface } from '@/lib/types/project';
 import ProjectClarifierChat from './ProjectClarifierChat';
+import NotesSection from '@/components/shared/notes/NotesSection';
 import { ProjectBadge } from './ProjectBadge';
 import ProjectDeleteModal from './ProjectDeleteModal';
 import ProjectEditModal from './ProjectEditModal';
@@ -33,6 +35,7 @@ type ProjectDetailClientProps = {
   initialProject: ProjectDetailClientProject;
   taskItems: ProjectDetailTaskListItem[];
   taskContext: ProjectClarifierTaskContext[];
+  noteInfo: ProjectClarifierNoteInfo[];
 };
 
 function formatValue(value: string | number | null | undefined) {
@@ -135,10 +138,12 @@ export default function ProjectDetailClient({
   initialProject,
   taskItems,
   taskContext,
+  noteInfo,
 }: ProjectDetailClientProps) {
   const [project, setProject] = useState(initialProject);
   const [taskListItems, setTaskListItems] = useState(taskItems);
   const [clarifierTaskContext, setClarifierTaskContext] = useState(taskContext);
+  const [noteRefreshKey, setNoteRefreshKey] = useState(0);
 
   useEffect(() => {
     setProject(initialProject);
@@ -156,8 +161,9 @@ export default function ProjectDetailClient({
     () => ({
       project,
       tasks: clarifierTaskContext,
+      notes: noteInfo,
     }),
-    [project, clarifierTaskContext],
+    [project, clarifierTaskContext, noteInfo],
   );
 
   function handleClarifierProjectUpdate(
@@ -273,8 +279,11 @@ export default function ProjectDetailClient({
           context={clarifierContext}
           onProjectUpdated={handleClarifierProjectUpdate}
           onTasksCreated={handleClarifierTasksCreated}
+          onNoteCreated={() => setNoteRefreshKey(k => k + 1)}
         />
       </div>
+
+      <NotesSection targetType="project" targetId={project.id} refreshKey={noteRefreshKey} />
     </div>
   );
 }

@@ -4,13 +4,17 @@ import {
   fetchRelatedTasksForTask,
   fetchTaskContext,
 } from '../_lib/taskActions';
+import { fetchNotesAction } from '@/app/notes/_lib/noteActions';
 import TaskDetailClient, {
   type TaskDetailClientProject,
   type TaskDetailClientTask,
 } from '../_components/TaskDetailClient';
 import type { ProjectInterface } from '@/lib/types/project';
 import type { TaskInterface } from '@/lib/types/task';
-import type { TaskClarifierTaskContext } from '@/lib/types/task-clarifier';
+import type {
+  TaskClarifierNoteInfo,
+  TaskClarifierTaskContext,
+} from '@/lib/types/task-clarifier';
 
 type TaskDetailPageProps = {
   params: Promise<{
@@ -55,6 +59,13 @@ function buildProjectContext(
     tags: project.tags ?? [],
     estTime: project.estTime,
     assignedTo: project.assignedTo,
+  };
+}
+
+function buildNoteInfo(note: { content: string; createdAt?: Date }): TaskClarifierNoteInfo {
+  return {
+    content: note.content,
+    createdAt: note.createdAt?.toISOString(),
   };
 }
 
@@ -104,6 +115,9 @@ export default async function TaskDetailPage({
     ? projects.find(projectItem => projectItem.id === task.project)
     : undefined;
 
+  const notes = await fetchNotesAction('task', id);
+  const noteInfo = notes.map(buildNoteInfo);
+
   return (
     <TaskDetailClient
       initialTask={buildTaskContext(task)}
@@ -111,6 +125,7 @@ export default async function TaskDetailPage({
       project={project ? buildProjectContext(project) : undefined}
       relatedTaskItems={buildTaskItems(relatedTasks)}
       relatedTaskContext={buildRelatedTaskContext(relatedTasks)}
+      noteInfo={noteInfo}
     />
   );
 }

@@ -9,12 +9,14 @@ import type { ProjectInterface } from '@/lib/types/project';
 import type { TaskInterface } from '@/lib/types/task';
 import type {
   TaskClarifierContext,
+  TaskClarifierNoteInfo,
   TaskClarifierTaskContext,
   TaskClarifierTaskUpdatePatch,
 } from '@/lib/types/task-clarifier';
 import { ProjectBadge } from '@/app/projects/_components/ProjectBadge';
 import ProjectInfoCard from '@/app/projects/_components/ProjectInfoCard';
 import TaskClarifierChat from './TaskClarifierChat';
+import NotesSection from '@/components/shared/notes/NotesSection';
 import TaskDeleteModal from './TaskDeleteModal';
 import TaskEditModal from './TaskEditModal';
 import TaskRelatedTasksSection from './TaskRelatedTasksSection';
@@ -43,6 +45,7 @@ type TaskDetailClientProps = {
   project?: TaskDetailClientProject;
   relatedTaskItems: TaskDetailTaskListItem[];
   relatedTaskContext: TaskClarifierTaskContext[];
+  noteInfo: TaskClarifierNoteInfo[];
 };
 
 function formatValue(value: string | number | null | undefined) {
@@ -172,11 +175,13 @@ export default function TaskDetailClient({
   project,
   relatedTaskItems,
   relatedTaskContext,
+  noteInfo,
 }: TaskDetailClientProps) {
   const [task, setTask] = useState(initialTask);
   const [relatedTasks, setRelatedTasks] = useState(relatedTaskItems);
   const [clarifierRelatedTasks, setClarifierRelatedTasks] =
     useState(relatedTaskContext);
+  const [noteRefreshKey, setNoteRefreshKey] = useState(0);
 
   useEffect(() => {
     setTask(initialTask);
@@ -204,8 +209,9 @@ export default function TaskDetailClient({
         },
       }),
       relatedTasks: clarifierRelatedTasks,
+      notes: noteInfo,
     }),
-    [task, project, clarifierRelatedTasks],
+    [task, project, clarifierRelatedTasks, noteInfo],
   );
 
   function handleClarifierTaskUpdate(patch: TaskClarifierTaskUpdatePatch) {
@@ -337,8 +343,11 @@ export default function TaskDetailClient({
           context={clarifierContext}
           onTaskUpdated={handleClarifierTaskUpdate}
           onTasksCreated={handleClarifierTasksCreated}
+          onNoteCreated={() => setNoteRefreshKey(k => k + 1)}
         />
       </div>
+
+      <NotesSection targetType="task" targetId={task.id} refreshKey={noteRefreshKey} />
     </div>
   );
 }

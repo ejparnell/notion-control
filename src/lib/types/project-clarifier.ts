@@ -66,9 +66,18 @@ export type ProjectClarifierTaskCreateAction = {
   tasks: ProjectClarifierTaskCreateDraft[];
 };
 
+export type ProjectClarifierNoteCreateAction = {
+  type: 'note-create';
+  id: string;
+  title: string;
+  description?: string;
+  content: string;
+};
+
 export type ProjectClarifierSuggestedAction =
   | ProjectClarifierProjectUpdateAction
-  | ProjectClarifierTaskCreateAction;
+  | ProjectClarifierTaskCreateAction
+  | ProjectClarifierNoteCreateAction;
 
 export type ProjectClarifierMessage = {
   role: Extract<ChatMessage['role'], 'user' | 'assistant'>;
@@ -105,7 +114,13 @@ export type ProjectClarifierTaskContext = {
   implementationPlan?: string[];
 };
 
+export type ProjectClarifierNoteInfo = {
+  content: string;
+  createdAt?: string;
+};
+
 export type ProjectClarifierContext = {
   project: ProjectClarifierProjectContext;
   tasks: ProjectClarifierTaskContext[];
+  notes?: ProjectClarifierNoteInfo[];
 };

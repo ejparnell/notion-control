@@ -23,6 +23,10 @@ const navItems = [
   {
     href: "/chat",
     label: 'Chat'
+  },
+  {
+    href: "/arya",
+    label: 'Arya'
   }
 ];
 

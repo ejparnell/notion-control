@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
 import { runProjectClarifierChat } from '@/lib/agents/project-clarifier';
+import { autoCreateClarifierNotes } from '@/lib/agents/clarifier-notes';
 import {
   parseSelectedLocalMemorySourcePaths,
 } from '@/lib/agents/rag/local-memory-sources';
@@ -8,6 +9,7 @@ import { LocalMemorySourceError } from '@/lib/agents/rag/source-document';
 import { isRetrievalConfigurationError } from '@/lib/agents/rag/vector/retrieval';
 import { updateProjectSchema } from '@/lib/validations/projects';
 import { createTaskSchema } from '@/lib/validations/tasks';
+import { createNote, getNotes } from '@/dal/notes';
 import {
   agentAssigneeValues,
   type AgentAssigneeName,
@@ -15,6 +17,8 @@ import {
 import type {
   ProjectClarifierContext,
   ProjectClarifierMessage,
+  ProjectClarifierNoteCreateAction,
+  ProjectClarifierNoteInfo,
   ProjectClarifierProjectContext,
   ProjectClarifierProjectUpdateAction,
   ProjectClarifierProjectUpdateField,
@@ -114,9 +118,21 @@ export async function POST(req: NextRequest) {
       ...(plannerAgent && { plannerAgent }),
       ...(selectedSourcePaths.length > 0 && { selectedSourcePaths }),
     });
+    const sanitizedMessage = sanitizeAssistantMessage(
+      result.message,
+      parsedContext.context,
+    );
+    const noteResult = await autoCreateNotesForMessage(
+      sanitizedMessage,
+      parsedContext.context,
+    );
 
     return NextResponse.json({
-      message: sanitizeAssistantMessage(result.message, parsedContext.context),
+      message: noteResult.message,
+      createdNotes: noteResult.createdNotes.map((note) => ({
+        id: note.id,
+        content: note.content,
+      })),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -233,6 +249,42 @@ function sanitizeAssistantMessage(
   };
 }
 
+async function autoCreateNotesForMessage(
+  message: ProjectClarifierMessage,
+  context: ProjectClarifierContext,
+): Promise<{
+  message: ProjectClarifierMessage;
+  createdNotes: Awaited<ReturnType<typeof createNote>>[];
+}> {
+  const actions = message.suggestedActions ?? [];
+
+  if (!actions.some((action) => action.type === 'note-create')) {
+    return {
+      message,
+      createdNotes: [],
+    };
+  }
+
+  const existingNotes = await getNotes('project', context.project.id);
+  const { createdNotes, remainingActions } = await autoCreateClarifierNotes({
+    actions,
+    targetType: 'project',
+    targetId: context.project.id,
+    existingNotes,
+    createNote,
+  });
+  const nextMessage: ProjectClarifierMessage = {
+    role: message.role,
+    content: message.content,
+    ...(remainingActions.length > 0 && { suggestedActions: remainingActions }),
+  };
+
+  return {
+    message: nextMessage,
+    createdNotes,
+  };
+}
+
 function parseSuggestedActions(
   value: unknown,
   context: ProjectClarifierContext,
@@ -246,7 +298,8 @@ function parseSuggestedActions(
   for (const item of value) {
     const action =
       parseProjectUpdateAction(item, context) ??
-      parseTaskCreateAction(item);
+      parseTaskCreateAction(item) ??
+      parseNoteCreateAction(item);
 
     if (action) {
       actions.push(action);
@@ -325,6 +378,30 @@ function parseTaskCreateAction(
     title: optionalNonEmptyString(value.title) ?? 'Create tasks',
     ...(description && { description }),
     tasks,
+  };
+}
+
+function parseNoteCreateAction(
+  value: unknown,
+): ProjectClarifierNoteCreateAction | null {
+  if (!isRecord(value) || value.type !== 'note-create') {
+    return null;
+  }
+
+  const content = optionalNonEmptyString(value.content);
+
+  if (!content) {
+    return null;
+  }
+
+  const description = optionalNonEmptyString(value.description);
+
+  return {
+    type: 'note-create',
+    id: `note-create-${crypto.randomUUID()}`,
+    title: optionalNonEmptyString(value.title) ?? 'Add note',
+    ...(description && { description }),
+    content,
   };
 }
 
@@ -776,11 +853,14 @@ function parseContext(value: unknown): ParsedContextResult {
     };
   }
 
+  const notes = parseNotes(value.notes);
+
   return {
     ok: true,
     context: {
       project,
       tasks,
+      ...(notes.length > 0 && { notes }),
     },
   };
 }
@@ -909,6 +989,33 @@ function optionalString(value: unknown): string | undefined {
 
 function optionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function parseNotes(value: unknown): ProjectClarifierNoteInfo[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const notes: ProjectClarifierNoteInfo[] = [];
+
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.content !== 'string') {
+      continue;
+    }
+
+    const content = item.content.trim();
+
+    if (!content) {
+      continue;
+    }
+
+    notes.push({
+      content,
+      createdAt: typeof item.createdAt === 'string' ? item.createdAt : undefined,
+    });
+  }
+
+  return notes;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

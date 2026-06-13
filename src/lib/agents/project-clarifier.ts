@@ -2,6 +2,10 @@ import 'server-only';
 
 import { createChatCompletion } from '@/lib/agents/llm';
 import { localMemoryContextProvider } from '@/lib/agents/chat/localMemoryContext';
+import {
+  isJsonLikeContent,
+  parseAssistantResponseJson,
+} from '@/lib/agents/clarifier-json';
 import { completionOptionsForMode } from '@/lib/agents/orchestrator/model';
 import {
   agentAssigneeValues,
@@ -32,6 +36,7 @@ const SYSTEM_PROMPT = [
   'You are a project and task clarification assistant inside a project detail page.',
   'Your job is to help the user clarify project scope, task breakdown, missing task details, time estimates, dates, priorities, and sequencing.',
   'The supplied project/task snapshot is the source of truth for the current app data.',
+  'Notes for this project are included in the snapshot. Review them — they record work done, ideas, and context the user has captured.',
   'When local-memory context is provided, use it as private background context for project planning and task suggestions.',
   'Do not mention local memory, source labels, source paths, document names, chunk IDs, line numbers, or citations in your reply.',
   'You may propose project field updates that the user can apply with a button, but only the user can apply them.',
@@ -39,8 +44,13 @@ const SYSTEM_PROMPT = [
   'Ask concise clarifying questions, usually one or two at a time.',
   'When suggesting new tasks, dates, or time estimates, label anything not present in the snapshot as an assumption.',
   'You may propose new tasks for this project with a task-create action. Do not propose task update or delete actions.',
+  'You may propose a note-create action to capture a useful observation, decision, or piece of context as a note attached to this project.',
+  'When you emit a note-create action, put the complete note text only in suggestedActions[].content.',
+  'When you emit a note-create action, keep the top-level content to a short conversational confirmation and do not repeat the full note there.',
+  'Do not ask whether the user wants you to add a note when you emit a note-create action.',
   'Project update actions support these fields: name, summary, status, priority, tags, startDate, endDate, estTime.',
   'Task create actions support these fields for each task: name, status, dueDate, priority, tags, completedOn, estTime.',
+  'Note create actions support this field: content (string, max 5000 characters, the full note text).',
   'Do not say startDate or endDate cannot be updated. If either date is missing from the snapshot, it is supported but not set yet.',
   'When useful, include one project-update suggested action for concrete project field changes the user may want to apply.',
   'When useful, include one task-create suggested action with all new task drafts the user may want to create.',
@@ -55,7 +65,7 @@ const SYSTEM_PROMPT = [
   'Do not include a project field in task-create task drafts; the app will attach tasks to the current project.',
   'If the snapshot is missing information needed for a confident answer, say what is missing instead of inventing it.',
   'Return JSON only, with no Markdown fences or surrounding prose.',
-  'Use this shape: {"content":"Your conversational reply.","suggestedActions":[{"type":"project-update","title":"Short title","description":"Optional short explanation","patch":{"name":"Current or new name","summary":"Current or new summary","status":"Planning","priority":"Medium","tags":["Personal"],"startDate":"2026-06-08","endDate":"2026-06-14","estTime":120}},{"type":"task-create","title":"Create meal prep tasks","description":"Optional short explanation","tasks":[{"name":"Choose recipes","status":"Backlog","priority":"Medium","tags":["Personal"],"dueDate":"2026-06-08","estTime":30}]}]}.',
+  'Use this shape: {"content":"Your conversational reply.","suggestedActions":[{"type":"project-update","title":"Short title","description":"Optional short explanation","patch":{"name":"Current or new name","summary":"Current or new summary","status":"Planning","priority":"Medium","tags":["Personal"],"startDate":"2026-06-08","endDate":"2026-06-14","estTime":120}},{"type":"task-create","title":"Create meal prep tasks","description":"Optional short explanation","tasks":[{"name":"Choose recipes","status":"Backlog","priority":"Medium","tags":["Personal"],"dueDate":"2026-06-08","estTime":30}]},{"type":"note-create","title":"Add observation note","description":"Optional short explanation","content":"The user noted that recipe planning takes longer than expected during holidays."}]}.',
   'Omit suggestedActions or use an empty array when a normal chat reply is enough.',
 ].join(' ');
 
@@ -63,6 +73,7 @@ const PLANNING_PROMPT = [
   'You are a project planning assistant inside a project detail page.',
   'The user has selected one planning agent. Your job is to turn the current project snapshot into concrete implementation tasks for that selected agent.',
   'The supplied project/task snapshot is the source of truth for the current app data.',
+  'Notes for this project are included in the snapshot. Review them — they record work done, ideas, and context the user has captured.',
   'When local-memory context is provided, use it as private background context for project planning.',
   'Do not mention local memory, source labels, source paths, document names, chunk IDs, line numbers, or citations in your reply.',
   'Only propose new task drafts for the current project. Do not propose project-update, task-update, delete, assignment-update, or work-create actions.',
@@ -159,6 +170,10 @@ function buildProjectClarifierRetrievalSeed(context: ProjectClarifierContext) {
     return `- ${task.name}${details.length > 0 ? ` (${details.join('; ')})` : ''}`;
   });
 
+  const noteLines = (context.notes ?? []).slice(0, 10).map((note, idx) =>
+    `- Note ${idx + 1}: ${note.content.slice(0, 200)}`,
+  );
+
   return [
     'Project clarifier retrieval context:',
     `Project name: ${project.name}`,
@@ -166,6 +181,7 @@ function buildProjectClarifierRetrievalSeed(context: ProjectClarifierContext) {
     project.status ? `Project status: ${project.status}` : null,
     project.priority ? `Project priority: ${project.priority}` : null,
     project.tags.length > 0 ? `Project tags: ${project.tags.join(', ')}` : null,
+    noteLines.length > 0 ? `Notes:\n${noteLines.join('\n')}` : null,
     taskLines.length > 0 ? `Tasks:\n${taskLines.join('\n')}` : null,
   ]
     .filter((line): line is string => Boolean(line))
@@ -207,6 +223,10 @@ function contextForPrompt(context: ProjectClarifierContext) {
       acceptanceCriteria: task.acceptanceCriteria ?? [],
       testingCriteria: task.testingCriteria ?? [],
       implementationPlan: task.implementationPlan ?? [],
+    })),
+    notes: (context.notes ?? []).map((note) => ({
+      content: note.content,
+      createdAt: note.createdAt ?? null,
     })),
     supportedProjectUpdateFields: [
       'name',
@@ -255,14 +275,14 @@ function parseAssistantMessage(rawContent: string): ProjectClarifierMessage {
   if (!parsed) {
     return {
       role: 'assistant',
-      content: stripSourceReferences(rawContent),
+      content: fallbackAssistantContent(rawContent),
     };
   }
 
   if (!isRecord(parsed) || typeof parsed.content !== 'string') {
     return {
       role: 'assistant',
-      content: stripSourceReferences(rawContent),
+      content: fallbackAssistantContent(rawContent),
     };
   }
 
@@ -282,83 +302,12 @@ function stripSourceReferences(content: string) {
   return content.replace(/\s*\[Source\s+\d+\]/gi, '');
 }
 
-function parseAssistantResponseJson(rawContent: string): unknown | null {
-  const trimmedContent = rawContent.trim();
+function fallbackAssistantContent(rawContent: string) {
+  const content = stripSourceReferences(rawContent).trim();
 
-  try {
-    return JSON.parse(trimmedContent);
-  } catch {
-    const fencedJson = extractFencedJson(trimmedContent);
-
-    if (fencedJson) {
-      try {
-        return JSON.parse(fencedJson);
-      } catch {
-        return extractFirstJsonObject(trimmedContent);
-      }
-    }
-
-    return extractFirstJsonObject(trimmedContent);
-  }
-}
-
-function extractFencedJson(content: string) {
-  const fenceMatch = /```(?:json)?\s*([\s\S]*?)```/i.exec(content);
-
-  return fenceMatch?.[1]?.trim() ?? null;
-}
-
-function extractFirstJsonObject(content: string): unknown | null {
-  const startIndex = content.indexOf('{');
-
-  if (startIndex === -1) {
-    return null;
-  }
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let index = startIndex; index < content.length; index += 1) {
-    const char = content[index];
-
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-
-    if (char === '\\') {
-      escaped = true;
-      continue;
-    }
-
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-
-    if (inString) {
-      continue;
-    }
-
-    if (char === '{') {
-      depth += 1;
-    }
-
-    if (char === '}') {
-      depth -= 1;
-
-      if (depth === 0) {
-        try {
-          return JSON.parse(content.slice(startIndex, index + 1));
-        } catch {
-          return null;
-        }
-      }
-    }
-  }
-
-  return null;
+  return isJsonLikeContent(content)
+    ? 'I drafted an update, but could not read it cleanly. Please try again.'
+    : content;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

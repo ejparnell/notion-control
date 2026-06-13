@@ -129,3 +129,21 @@ export type AgentAssigneeColor =
 export const agentAssigneeValues: AgentAssigneeName[] = Object.values(
   AGENT_ASSIGNEE_MAP,
 ).map(agent => agent.name);
+
+export const NOTE_TARGET_TYPE_MAP = {
+  PROJECT: {
+    name: 'project',
+  },
+  TASK: {
+    name: 'task',
+  },
+} as const;
+
+export type NoteTargetTypeMap = keyof typeof NOTE_TARGET_TYPE_MAP;
+
+export type NoteTargetType =
+  (typeof NOTE_TARGET_TYPE_MAP)[NoteTargetTypeMap]['name'];
+
+export const noteTargetTypeValues: NoteTargetType[] = Object.values(
+  NOTE_TARGET_TYPE_MAP,
+).map(t => t.name);

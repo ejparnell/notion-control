@@ -26,10 +26,17 @@ type TaskClarifierChatProps = {
   context: TaskClarifierContext;
   onTaskUpdated?: (patch: TaskClarifierTaskUpdatePatch) => void;
   onTasksCreated?: (tasks: TaskClarifierTaskContext[]) => void;
+  onNoteCreated?: () => void;
 };
 
 type ActionApplyState = {
   status: 'idle' | 'applying' | 'applied' | 'error' | 'superseded';
+  error?: string;
+};
+
+type TaskClarifierChatResponse = {
+  message?: TaskClarifierMessage;
+  createdNotes?: { id: string; content: string }[];
   error?: string;
 };
 
@@ -41,6 +48,7 @@ export default function TaskClarifierChat({
   context,
   onTaskUpdated,
   onTasksCreated,
+  onNoteCreated,
 }: TaskClarifierChatProps) {
   const router = useRouter();
   const [messages, setMessages] = useState<TaskClarifierMessage[]>([]);
@@ -89,16 +97,14 @@ export default function TaskClarifierChat({
         }),
       });
 
-      const data = (await res.json()) as {
-        message?: TaskClarifierMessage;
-        error?: string;
-      };
+      const data = (await res.json()) as TaskClarifierChatResponse;
 
       if (!res.ok || !data.message) {
         throw new Error(data.error ?? `Unexpected error (${res.status})`);
       }
 
       setMessages(currentMessages => [...currentMessages, data.message!]);
+      handleCreatedNotes(data.createdNotes);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
@@ -134,16 +140,14 @@ export default function TaskClarifierChat({
         }),
       });
 
-      const data = (await res.json()) as {
-        message?: TaskClarifierMessage;
-        error?: string;
-      };
+      const data = (await res.json()) as TaskClarifierChatResponse;
 
       if (!res.ok || !data.message) {
         throw new Error(data.error ?? `Unexpected error (${res.status})`);
       }
 
       setMessages(currentMessages => [...currentMessages, data.message!]);
+      handleCreatedNotes(data.createdNotes);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
@@ -219,6 +223,15 @@ export default function TaskClarifierChat({
         },
       }));
     }
+  }
+
+  function handleCreatedNotes(createdNotes: TaskClarifierChatResponse['createdNotes']) {
+    if (!createdNotes || createdNotes.length === 0) {
+      return;
+    }
+
+    onNoteCreated?.();
+    router.refresh();
   }
 
   function supersedePendingActions() {
@@ -404,6 +417,10 @@ function SuggestedActionCard({
         onApply={onApplyTaskCreate}
       />
     );
+  }
+
+  if (action.type === 'note-create') {
+    return null;
   }
 
   return (

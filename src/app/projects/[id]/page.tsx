@@ -3,12 +3,14 @@ import {
   fetchProjectContext,
   fetchTasksForProject,
 } from '../_lib/projectActions';
+import { fetchNotesAction } from '@/app/notes/_lib/noteActions';
 import ProjectDetailClient, {
   type ProjectDetailClientProject,
 } from '../_components/ProjectDetailClient';
 import type { ProjectInterface } from '@/lib/types/project';
 import type { TaskInterface } from '@/lib/types/task';
 import type {
+  ProjectClarifierNoteInfo,
   ProjectClarifierTaskContext,
 } from '@/lib/types/project-clarifier';
 
@@ -69,16 +71,26 @@ function buildTaskItems(
   }));
 }
 
+function buildNoteInfo(note: { content: string; createdAt?: Date }): ProjectClarifierNoteInfo {
+  return {
+    content: note.content,
+    createdAt: note.createdAt?.toISOString(),
+  };
+}
+
 function buildProjectClarifierContext(
   project: ProjectInterface,
   tasks: TaskInterface[],
+  notes: { content: string; createdAt?: Date }[],
 ): {
   project: ProjectDetailClientProject;
   tasks: ProjectClarifierTaskContext[];
+  notes: ProjectClarifierNoteInfo[];
 } {
   return {
     project: buildProjectContext(project),
     tasks: buildTaskContext(tasks),
+    notes: notes.map(buildNoteInfo),
   };
 }
 
@@ -93,13 +105,15 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
-  const clarifierContext = buildProjectClarifierContext(project, tasks);
+  const notes = await fetchNotesAction('project', id);
+  const clarifierContext = buildProjectClarifierContext(project, tasks, notes);
 
   return (
     <ProjectDetailClient
       initialProject={clarifierContext.project}
       taskItems={buildTaskItems(tasks)}
       taskContext={clarifierContext.tasks}
+      noteInfo={clarifierContext.notes}
     />
   );
 }

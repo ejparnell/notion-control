@@ -24,10 +24,17 @@ type ProjectClarifierChatProps = {
   context: ProjectClarifierContext;
   onProjectUpdated?: (patch: ProjectClarifierProjectUpdatePatch) => void;
   onTasksCreated?: (tasks: ProjectClarifierTaskContext[]) => void;
+  onNoteCreated?: () => void;
 };
 
 type ActionApplyState = {
   status: 'idle' | 'applying' | 'applied' | 'error' | 'superseded';
+  error?: string;
+};
+
+type ProjectClarifierChatResponse = {
+  message?: ProjectClarifierMessage;
+  createdNotes?: { id: string; content: string }[];
   error?: string;
 };
 
@@ -39,6 +46,7 @@ export default function ProjectClarifierChat({
   context,
   onProjectUpdated,
   onTasksCreated,
+  onNoteCreated,
 }: ProjectClarifierChatProps) {
   const router = useRouter();
   const [messages, setMessages] = useState<ProjectClarifierMessage[]>([]);
@@ -87,16 +95,14 @@ export default function ProjectClarifierChat({
         }),
       });
 
-      const data = (await res.json()) as {
-        message?: ProjectClarifierMessage;
-        error?: string;
-      };
+      const data = (await res.json()) as ProjectClarifierChatResponse;
 
       if (!res.ok || !data.message) {
         throw new Error(data.error ?? `Unexpected error (${res.status})`);
       }
 
       setMessages((currentMessages) => [...currentMessages, data.message!]);
+      handleCreatedNotes(data.createdNotes);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
@@ -132,16 +138,14 @@ export default function ProjectClarifierChat({
         }),
       });
 
-      const data = (await res.json()) as {
-        message?: ProjectClarifierMessage;
-        error?: string;
-      };
+      const data = (await res.json()) as ProjectClarifierChatResponse;
 
       if (!res.ok || !data.message) {
         throw new Error(data.error ?? `Unexpected error (${res.status})`);
       }
 
       setMessages((currentMessages) => [...currentMessages, data.message!]);
+      handleCreatedNotes(data.createdNotes);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
@@ -216,6 +220,15 @@ export default function ProjectClarifierChat({
         },
       }));
     }
+  }
+
+  function handleCreatedNotes(createdNotes: ProjectClarifierChatResponse['createdNotes']) {
+    if (!createdNotes || createdNotes.length === 0) {
+      return;
+    }
+
+    onNoteCreated?.();
+    router.refresh();
   }
 
   function supersedePendingActions() {
@@ -401,6 +414,10 @@ function SuggestedActionCard({
         onApply={onApplyTaskCreate}
       />
     );
+  }
+
+  if (action.type === 'note-create') {
+    return null;
   }
 
   return (

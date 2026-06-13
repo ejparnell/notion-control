@@ -1,12 +1,14 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
 import { runTaskClarifierChat } from '@/lib/agents/task-clarifier';
+import { autoCreateClarifierNotes } from '@/lib/agents/clarifier-notes';
 import {
   parseSelectedLocalMemorySourcePaths,
 } from '@/lib/agents/rag/local-memory-sources';
 import { LocalMemorySourceError } from '@/lib/agents/rag/source-document';
 import { isRetrievalConfigurationError } from '@/lib/agents/rag/vector/retrieval';
 import { createTaskSchema, updateTaskSchema } from '@/lib/validations/tasks';
+import { createNote, getNotes } from '@/dal/notes';
 import {
   agentAssigneeValues,
   type AgentAssigneeName,
@@ -14,6 +16,8 @@ import {
 import type {
   TaskClarifierContext,
   TaskClarifierMessage,
+  TaskClarifierNoteCreateAction,
+  TaskClarifierNoteInfo,
   TaskClarifierSuggestedAction,
   TaskClarifierSuggestedActionChange,
   TaskClarifierTaskContext,
@@ -120,9 +124,21 @@ export async function POST(req: NextRequest) {
       ...(plannerAgent && { plannerAgent }),
       ...(selectedSourcePaths.length > 0 && { selectedSourcePaths }),
     });
+    const sanitizedMessage = sanitizeAssistantMessage(
+      result.message,
+      parsedContext.context,
+    );
+    const noteResult = await autoCreateNotesForMessage(
+      sanitizedMessage,
+      parsedContext.context,
+    );
 
     return NextResponse.json({
-      message: sanitizeAssistantMessage(result.message, parsedContext.context),
+      message: noteResult.message,
+      createdNotes: noteResult.createdNotes.map((note) => ({
+        id: note.id,
+        content: note.content,
+      })),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -239,6 +255,42 @@ function sanitizeAssistantMessage(
   };
 }
 
+async function autoCreateNotesForMessage(
+  message: TaskClarifierMessage,
+  context: TaskClarifierContext,
+): Promise<{
+  message: TaskClarifierMessage;
+  createdNotes: Awaited<ReturnType<typeof createNote>>[];
+}> {
+  const actions = message.suggestedActions ?? [];
+
+  if (!actions.some((action) => action.type === 'note-create')) {
+    return {
+      message,
+      createdNotes: [],
+    };
+  }
+
+  const existingNotes = await getNotes('task', context.task.id);
+  const { createdNotes, remainingActions } = await autoCreateClarifierNotes({
+    actions,
+    targetType: 'task',
+    targetId: context.task.id,
+    existingNotes,
+    createNote,
+  });
+  const nextMessage: TaskClarifierMessage = {
+    role: message.role,
+    content: message.content,
+    ...(remainingActions.length > 0 && { suggestedActions: remainingActions }),
+  };
+
+  return {
+    message: nextMessage,
+    createdNotes,
+  };
+}
+
 function parseSuggestedActions(
   value: unknown,
   context: TaskClarifierContext,
@@ -252,7 +304,8 @@ function parseSuggestedActions(
   for (const item of value) {
     const action =
       parseTaskUpdateAction(item, context) ??
-      parseTaskCreateAction(item, context);
+      parseTaskCreateAction(item, context) ??
+      parseNoteCreateAction(item);
 
     if (action) {
       actions.push(action);
@@ -329,6 +382,30 @@ function parseTaskCreateAction(
     title: optionalNonEmptyString(value.title) ?? 'Create related tasks',
     ...(description && { description }),
     tasks,
+  };
+}
+
+function parseNoteCreateAction(
+  value: unknown,
+): TaskClarifierNoteCreateAction | null {
+  if (!isRecord(value) || value.type !== 'note-create') {
+    return null;
+  }
+
+  const content = optionalNonEmptyString(value.content);
+
+  if (!content) {
+    return null;
+  }
+
+  const description = optionalNonEmptyString(value.description);
+
+  return {
+    type: 'note-create',
+    id: `note-create-${crypto.randomUUID()}`,
+    title: optionalNonEmptyString(value.title) ?? 'Add note',
+    ...(description && { description }),
+    content,
   };
 }
 
@@ -755,12 +832,15 @@ function parseContext(value: unknown): ParsedContextResult {
     };
   }
 
+  const notes = parseNotes(value.notes);
+
   return {
     ok: true,
     context: {
       task,
       ...(project && { project }),
       relatedTasks,
+      ...(notes.length > 0 && { notes }),
     },
   };
 }
@@ -989,6 +1069,33 @@ function optionalString(value: unknown): string | undefined {
 
 function optionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function parseNotes(value: unknown): TaskClarifierNoteInfo[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const notes: TaskClarifierNoteInfo[] = [];
+
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.content !== 'string') {
+      continue;
+    }
+
+    const content = item.content.trim();
+
+    if (!content) {
+      continue;
+    }
+
+    notes.push({
+      content,
+      createdAt: typeof item.createdAt === 'string' ? item.createdAt : undefined,
+    });
+  }
+
+  return notes;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
